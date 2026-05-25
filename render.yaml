@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: ticketapp-back
+    env: node
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: PORT
+        value: 8080
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: WEBHOOK_SECRET
+        sync: false
