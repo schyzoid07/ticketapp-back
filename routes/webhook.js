@@ -47,24 +47,33 @@ router.post('/process-ticket', async (req, res) => {
     const contextResult = await analyzeContext(ticket, historyTickets || []);
     console.log('Contexto analizado:', contextResult);
 
-    // Paso 4: ResponseAgent
-    const userName = ticket.user_name || null;
-    console.log('Ejecutando ResponseAgent...');
-    const suggestedResponse = await suggestResponse(ticket, contextResult, userName);
+    // Paso 4: ResponseAgent (solo si está dentro del scope)
+    let suggestedResponse = null;
+    if (triageResult.priority > 0) {
+      const userName = ticket.user_name || null;
+      console.log('Ejecutando ResponseAgent...');
+      suggestedResponse = await suggestResponse(ticket, contextResult, userName);
+    } else {
+      console.log('Ticket fuera de scope, omitiendo ResponseAgent');
+    }
 
     // Paso 5: Actualizar ticket en Supabase
     console.log('Actualizando ticket en Supabase...');
+    const updateData = {
+      category: triageResult.category,
+      priority: triageResult.priority,
+      tags: triageResult.tags,
+      ai_context: contextResult,
+      status: triageResult.priority === 0 ? 'CLOSED' : 'OPEN',
+      updated_at: new Date().toISOString(),
+    };
+    if (suggestedResponse) {
+      updateData.ai_suggested_response = suggestedResponse;
+    }
+
     const { error: updateError } = await supabase
       .from('tickets')
-      .update({
-        category: triageResult.category,
-        priority: triageResult.priority,
-        tags: triageResult.tags,
-        ai_context: contextResult,
-        ai_suggested_response: suggestedResponse,
-        status: 'OPEN',
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq('id', ticket.id);
 
     if (updateError) {

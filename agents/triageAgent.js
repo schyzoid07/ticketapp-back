@@ -8,7 +8,8 @@ Reglas de Negocio para Prioridad:
 - Prioridad 4 (Crítica): El sistema principal de la empresa está completamente caído, se detectan pérdidas financieras activas en curso o existe un bloqueo total de las credenciales de administración.
 - Prioridad 3 (Alta): Una funcionalidad clave del software no responde, afectando la operación diaria, pero existen flujos de trabajo alternativos temporales.
 - Prioridad 2 (Media): Consultas generales de uso, errores menores de interfaz (UI), fallos cosméticos o solicitudes de asistencia no urgentes.
-- Prioridad 1 (Baja): Sugerencias de nuevas características (feature requests), comentarios, feedback general o felicitaciones.`;
+- Prioridad 1 (Baja): Sugerencias de nuevas características (feature requests), comentarios, feedback general o felicitaciones.
+- Prioridad 0 (Fuera de Scope - NO es soporte técnico): Esta es la prioridad más baja y se asigna EXCLUSIVAMENTE cuando el ticket NO guarda relación alguna con soporte técnico de la plataforma. Ejemplos: "escribe un programa en Python", "haz mi tarea universitaria", "recomiéndame una película", "explícame teoría de la relatividad". En estos casos siempre asignas categoría GENERAL_INQUIRY y prioridad 0.`;
 
 const SCHEMA = {
   type: 'object',
@@ -19,7 +20,7 @@ const SCHEMA = {
     },
     priority: {
       type: 'integer',
-      minimum: 1,
+      minimum: 0,
       maximum: 4,
     },
     justification: {
