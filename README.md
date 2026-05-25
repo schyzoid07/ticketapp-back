@@ -26,6 +26,7 @@ Cliente → Formulario web → Supabase INSERT → Webhook → API
 ### Requisitos
 
 - Node.js 20+
+- **pnpm** (reemplaza a npm, evitar vulnerabilidades)
 - Una cuenta en [Supabase](https://supabase.com) (plan gratuito)
 - Una API key de [Google AI Studio](https://aistudio.google.com) (gratuita)
 
@@ -58,6 +59,8 @@ Luego inicia el servidor:
 ```bash
 pnpm dev
 ```
+
+> **Nota**: Este proyecto usa **pnpm** en lugar de npm por seguridad (vulnerabilidades conocidas en npm). Si clonas el repo, asegúrate de tener pnpm instalado (`npm install -g pnpm`).
 
 ## Endpoints
 
