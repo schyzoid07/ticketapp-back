@@ -34,7 +34,7 @@ Cliente → Formulario web → Supabase INSERT → Webhook → API
 ```bash
 git clone https://github.com/schyzoid07/ticketapp-back.git
 cd ticketapp-back
-npm install
+pnpm install
 ```
 
 Crea un archivo `.env` basado en `.env.example`:
@@ -56,7 +56,7 @@ Ejecuta las migraciones SQL contra tu proyecto Supabase (desde el dashboard SQL 
 Luego inicia el servidor:
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 ## Endpoints
