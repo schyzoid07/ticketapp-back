@@ -22,6 +22,14 @@ router.post('/process-ticket', async (req, res) => {
     const ticket = record;
     console.log(`Procesando ticket ${ticket.id}: "${ticket.title}"`);
 
+    // Obtener nombre de la empresa
+    const { data: company } = await supabase
+      .from('companies')
+      .select('name')
+      .eq('id', ticket.company_id)
+      .single();
+    ticket.company_name = company?.name || null;
+
     // Paso 1: TriageAgent
     console.log('Ejecutando TriageAgent...');
     const triageResult = await triageTicket(ticket.title, ticket.description);
@@ -95,6 +103,16 @@ router.post('/test-process', async (req, res) => {
     const { ticket } = req.body;
     if (!ticket) {
       return res.status(400).json({ error: 'Se requiere un ticket en el body' });
+    }
+
+    // Obtener nombre de la empresa si hay company_id
+    if (ticket.company_id) {
+      const { data: company } = await supabase
+        .from('companies')
+        .select('name')
+        .eq('id', ticket.company_id)
+        .single();
+      ticket.company_name = company?.name || null;
     }
 
     const triageResult = await triageTicket(ticket.title, ticket.description);
