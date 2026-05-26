@@ -3,6 +3,7 @@ import { supabase } from '../services/supabase.js';
 import { triageTicket } from '../agents/triageAgent.js';
 import { analyzeContext } from '../agents/contextAgent.js';
 import { suggestResponse } from '../agents/responseAgent.js';
+import { sanitizeTicket, sanitizeTicketArray } from '../services/sanitize.js';
 
 const router = Router();
 
@@ -52,7 +53,9 @@ router.post('/process-ticket', async (req, res) => {
 
     // Paso 3: ContextAgent
     console.log('Ejecutando ContextAgent...');
-    const contextResult = await analyzeContext(ticket, historyTickets || []);
+    const safeTicket = sanitizeTicket(ticket);
+    const safeHistory = sanitizeTicketArray(historyTickets || []);
+    const contextResult = await analyzeContext(safeTicket, safeHistory);
     console.log('Contexto analizado:', contextResult);
 
     // Paso 4: ResponseAgent (solo si está dentro del scope)
@@ -60,7 +63,7 @@ router.post('/process-ticket', async (req, res) => {
     if (triageResult.priority > 0) {
       const userName = ticket.user_name || null;
       console.log('Ejecutando ResponseAgent...');
-      suggestedResponse = await suggestResponse(ticket, contextResult, userName);
+      suggestedResponse = await suggestResponse(safeTicket, contextResult, userName);
     } else {
       console.log('Ticket fuera de scope, omitiendo ResponseAgent');
     }
@@ -116,8 +119,10 @@ router.post('/test-process', async (req, res) => {
     }
 
     const triageResult = await triageTicket(ticket.title, ticket.description);
-    const contextResult = await analyzeContext(ticket, ticket.history || []);
-    const suggestedResponse = await suggestResponse(ticket, contextResult, ticket.user_name);
+    const safeTicket = sanitizeTicket(ticket);
+    const safeHistory = sanitizeTicketArray(ticket.history || []);
+    const contextResult = await analyzeContext(safeTicket, safeHistory);
+    const suggestedResponse = await suggestResponse(safeTicket, contextResult, ticket.user_name);
 
     res.json({
       triage: triageResult,
