@@ -1,11 +1,11 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { supabase } from '../services/supabase';
 import { triageTicket } from '../agents/triageAgent';
 import { analyzeContext } from '../agents/contextAgent';
 import { suggestResponse } from '../agents/responseAgent';
 import { sanitizeTicket, sanitizeTicketArray } from '../services/sanitize';
-import { env } from '../services/env';
+import { requireAuth, requireRole, type AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
 
@@ -13,14 +13,8 @@ const ReprocessSchema = z.object({
   ticket_id: z.string().uuid(),
 });
 
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', requireAuth, requireRole('owner', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const secret = req.headers['x-webhook-secret'];
-    if (secret !== env.WEBHOOK_SECRET) {
-      res.status(401).json({ error: 'No autorizado' });
-      return;
-    }
-
     const parsed = ReprocessSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'Payload inválido', details: parsed.error.issues });
@@ -43,6 +37,12 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (ticket.status === 'RESOLVED' || ticket.status === 'CLOSED') {
       res.status(400).json({ error: 'No se puede reprocesar un ticket resuelto o cerrado' });
+      return;
+    }
+
+    // Verify the ticket belongs to the user's company
+    if (ticket.company_id !== req.user!.company_id) {
+      res.status(403).json({ error: 'No tienes permiso para reprocesar este ticket' });
       return;
     }
 
