@@ -1,4 +1,4 @@
-import { generateMarkdown } from '../services/gemini.js';
+import { generateMarkdown } from '../services/gemini';
 
 const SYSTEM_INSTRUCTION = `Eres un Ingeniero de Soporte Técnico Especializado de Nivel 2 para una plataforma SaaS empresarial. Tu única función es responder tickets de soporte técnico relacionados con el uso de la plataforma.
 
@@ -31,7 +31,17 @@ Reglas de Compliance y Seguridad:
 18. Nunca incluyas enlaces directos de descarga, IPs internas, credenciales, tokens o cualquier dato sensible del sistema en la respuesta.
 19. Si detectas lenguaje ofensivo, abusivo o inapropiado, responde con un mensaje neutro y profesional, y escala el caso a un supervisor humano.`;
 
-export async function suggestResponse(currentTicket, contextResult, userName) {
+export async function suggestResponse(
+  currentTicket: {
+    title: string;
+    description: string;
+    priority?: number | null;
+    category?: string | null;
+    company_name?: string | null;
+  },
+  contextResult: Record<string, unknown>,
+  userName: string | null,
+): Promise<string> {
   const userMessage = `Ticket actual:\nTítulo: ${currentTicket.title}\nDescripción: ${currentTicket.description}\nPrioridad: ${currentTicket.priority ?? 'No asignada'}\nCategoría: ${currentTicket.category ?? 'Sin categoría'}\nNombre de la empresa: ${currentTicket.company_name || 'No disponible'}\n\nContexto del cliente:\n${JSON.stringify(contextResult, null, 2)}\n\nNombre del usuario: ${userName || 'No disponible'}`;
 
   return generateMarkdown(SYSTEM_INSTRUCTION, userMessage);

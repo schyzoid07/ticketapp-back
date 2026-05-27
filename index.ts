@@ -2,14 +2,13 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
-import webhookRouter from './routes/webhook.js';
+import webhookRouter from './routes/webhook';
+import { env } from './services/env';
 
 const app = express();
-const port = process.env.PORT ?? 8080;
+const port = env.PORT;
 
-const allowedOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
-  : ['http://localhost:3001', 'http://localhost:3000'];
+const allowedOrigins = env.CORS_ORIGINS.split(',').map(s => s.trim());
 
 app.use(cors({
   origin: (origin, callback) => {
