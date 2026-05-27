@@ -40,8 +40,19 @@ router.post('/process-ticket', async (req: Request, res: Response) => {
     ticket.company_name = company?.name || null;
 
     console.log('Ejecutando TriageAgent...');
-    const triageResult = await triageTicket(ticket.title as string, ticket.description as string);
-    console.log('Triage completado:', triageResult);
+    let triageResult: Record<string, unknown>;
+    try {
+      triageResult = await triageTicket(ticket.title as string, ticket.description as string);
+      console.log('Triage completado:', triageResult);
+    } catch (err) {
+      console.error('Error en TriageAgent, usando fallback:', err);
+      triageResult = {
+        category: 'GENERAL_INQUIRY',
+        priority: 2,
+        tags: ['pending-manual'],
+        justification: 'IA no disponible en este momento. Asignación manual requerida.',
+      };
+    }
 
     console.log('Consultando historial del usuario...');
     const { data: historyTickets, error: historyError } = await supabase
@@ -60,27 +71,41 @@ router.post('/process-ticket', async (req: Request, res: Response) => {
     console.log('Ejecutando ContextAgent...');
     const safeTicket = sanitizeTicket(ticket as Record<string, unknown>);
     const safeHistory = sanitizeTicketArray((historyTickets || []) as Record<string, unknown>[]);
-    const contextResult = await analyzeContext(
-      { title: safeTicket?.title ?? '', description: safeTicket?.description ?? '' },
-      safeHistory,
-    );
-    console.log('Contexto analizado:', contextResult);
+    let contextResult: Record<string, unknown>;
+    try {
+      contextResult = await analyzeContext(
+        { title: safeTicket?.title ?? '', description: safeTicket?.description ?? '' },
+        safeHistory,
+      );
+      console.log('Contexto analizado:', contextResult);
+    } catch (err) {
+      console.error('Error en ContextAgent, usando fallback:', err);
+      contextResult = {
+        is_recurring_issue: false,
+        customer_sentiment: 'NEUTRAL',
+        historical_summary: 'IA no disponible en este momento. Revise el historial manualmente.',
+      };
+    }
 
     let suggestedResponse = null;
-    if (triageResult.priority > 0) {
+    if (triageResult && (triageResult.priority as number) > 0) {
       const userName = (ticket.user_name as string) || null;
       console.log('Ejecutando ResponseAgent...');
-      suggestedResponse = await suggestResponse(
-        {
-          title: safeTicket?.title ?? ticket.title as string,
-          description: safeTicket?.description ?? ticket.description as string,
-          priority: triageResult.priority,
-          category: triageResult.category,
-          company_name: safeTicket?.company_name,
-        },
-        contextResult as unknown as Record<string, unknown>,
-        userName,
-      );
+      try {
+        suggestedResponse = await suggestResponse(
+          {
+            title: safeTicket?.title ?? ticket.title as string,
+            description: safeTicket?.description ?? ticket.description as string,
+            priority: triageResult.priority as number,
+            category: triageResult.category as string,
+            company_name: safeTicket?.company_name,
+          },
+          contextResult,
+          userName,
+        );
+      } catch (err) {
+        console.error('Error en ResponseAgent, omitiendo sugerencia:', err);
+      }
     } else {
       console.log('Ticket fuera de scope, omitiendo ResponseAgent');
     }
