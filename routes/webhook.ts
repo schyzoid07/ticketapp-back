@@ -156,6 +156,33 @@ router.post('/process-ticket', async (req: Request, res: Response) => {
     }
 
     console.log(`Ticket ${ticket.id} procesado exitosamente`);
+
+    // Fire internal n8n webhook (todos los tickets procesados)
+    if (env.INTERNAL_WEBHOOK_URL) {
+      const n8nPayload = {
+        event: 'ticket.processed',
+        company_id: ticket.company_id,
+        company_name: company?.name || null,
+        ticket: {
+          id: ticket.id,
+          title: ticket.title,
+          user_name: ticket.user_name,
+          category: triageResult.category,
+          priority: triageResult.priority,
+          tags: triageResult.tags,
+          status: triageResult.priority === 0 ? 'CLOSED' : 'OPEN',
+        },
+        token_usage: tokenUsage,
+        processed_at: new Date().toISOString(),
+      };
+
+      fetch(env.INTERNAL_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(n8nPayload),
+      }).catch((err: unknown) => console.error('Error al enviar a n8n:', err));
+    }
+
     res.json({ success: true, ticketId: ticket.id });
   } catch (error) {
     console.error('Error en pipeline de agentes:', error);

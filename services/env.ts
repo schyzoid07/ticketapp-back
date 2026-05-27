@@ -7,6 +7,7 @@ const envSchema = z.object({
   GEMINI_API_KEY: z.string().min(1),
   WEBHOOK_SECRET: z.string().min(1),
   CORS_ORIGINS: z.string().default('http://localhost:3001,http://localhost:3000'),
+  INTERNAL_WEBHOOK_URL: z.string().url().optional(),
 });
 
 export const env = envSchema.parse(process.env);
