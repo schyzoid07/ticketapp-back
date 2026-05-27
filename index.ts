@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import webhookRouter from './routes/webhook';
+import reprocessRouter from './routes/reprocess';
 import { env } from './services/env';
 
 const app = express();
@@ -37,6 +38,7 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/webhooks', webhookRouter);
+app.use('/api/tickets/reprocess', reprocessRouter);
 
 app.listen(port, () => {
   console.log(`API de agentes escuchando en puerto ${port}`);

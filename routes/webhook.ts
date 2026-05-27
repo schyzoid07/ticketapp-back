@@ -30,7 +30,8 @@ router.post('/process-ticket', async (req: Request, res: Response) => {
     }
 
     const ticket = parsed.data.record;
-    console.log(`Procesando ticket ${ticket.id}: "${ticket.title}"`);
+    const aiMode = (ticket.ai_mode as string) || 'minimal';
+    console.log(`Procesando ticket ${ticket.id}: "${ticket.title}" [modo: ${aiMode}]`);
 
     const { data: company } = await supabase
       .from('companies')
@@ -57,89 +58,107 @@ router.post('/process-ticket', async (req: Request, res: Response) => {
       };
     }
 
-    console.log('Consultando historial del usuario...');
-    const { data: historyTickets, error: historyError } = await supabase
-      .from('tickets')
-      .select('*')
-      .eq('user_id', ticket.user_id as string)
-      .eq('company_id', ticket.company_id as string)
-      .neq('id', ticket.id as string)
-      .order('created_at', { ascending: false })
-      .limit(5);
-
-    if (historyError) {
-      console.error('Error al consultar historial:', historyError);
-    }
-
-    console.log('Ejecutando ContextAgent...');
-    const safeTicket = sanitizeTicket(ticket as Record<string, unknown>);
-    const safeHistory = sanitizeTicketArray((historyTickets || []) as Record<string, unknown>[]);
-    let contextResult: Record<string, unknown>;
+    let contextResult: Record<string, unknown> | null = null;
     let contextTokens = { promptTokens: 0, candidatesTokens: 0, totalTokens: 0 };
-    try {
-      const contextResponse = await analyzeContext(
-        { title: safeTicket?.title ?? '', description: safeTicket?.description ?? '' },
-        safeHistory,
-      );
-      contextResult = contextResponse.result as unknown as Record<string, unknown>;
-      contextTokens = contextResponse.tokens;
-      console.log('Contexto analizado:', contextResult);
-    } catch (err) {
-      console.error('Error en ContextAgent, usando fallback:', err);
-      contextResult = {
-        is_recurring_issue: false,
-        customer_sentiment: 'NEUTRAL',
-        historical_summary: 'IA no disponible en este momento. Revise el historial manualmente.',
-      };
-    }
-
     let suggestedResponse = null;
     let responseTokens = { promptTokens: 0, candidatesTokens: 0, totalTokens: 0 };
-    if (triageResult && (triageResult.priority as number) > 0) {
-      const userName = (ticket.user_name as string) || null;
-      console.log('Ejecutando ResponseAgent...');
+
+    if (aiMode === 'complete') {
+      console.log('Consultando historial del usuario...');
+      const { data: historyTickets, error: historyError } = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('user_id', ticket.user_id as string)
+        .eq('company_id', ticket.company_id as string)
+        .neq('id', ticket.id as string)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (historyError) {
+        console.error('Error al consultar historial:', historyError);
+      }
+
+      console.log('Ejecutando ContextAgent...');
+      const safeTicket = sanitizeTicket(ticket as Record<string, unknown>);
+      const safeHistory = sanitizeTicketArray((historyTickets || []) as Record<string, unknown>[]);
       try {
-        const responseResult = await suggestResponse(
-          {
-            title: safeTicket?.title ?? ticket.title as string,
-            description: safeTicket?.description ?? ticket.description as string,
-            priority: triageResult.priority as number,
-            category: triageResult.category as string,
-            company_name: safeTicket?.company_name,
-          },
-          contextResult,
-          userName,
+        const contextResponse = await analyzeContext(
+          { title: safeTicket?.title ?? '', description: safeTicket?.description ?? '' },
+          safeHistory,
         );
-        suggestedResponse = responseResult.text;
-        responseTokens = responseResult.tokens;
+        contextResult = contextResponse.result as unknown as Record<string, unknown>;
+        contextTokens = contextResponse.tokens;
+        console.log('Contexto analizado:', contextResult);
       } catch (err) {
-        console.error('Error en ResponseAgent, omitiendo sugerencia:', err);
+        console.error('Error en ContextAgent, usando fallback:', err);
+        contextResult = {
+          is_recurring_issue: false,
+          customer_sentiment: 'NEUTRAL',
+          historical_summary: 'IA no disponible en este momento. Revise el historial manualmente.',
+        };
+      }
+
+      if (triageResult && (triageResult.priority as number) > 0) {
+        const userName = (ticket.user_name as string) || null;
+        const safeTicket = sanitizeTicket(ticket as Record<string, unknown>);
+        console.log('Ejecutando ResponseAgent...');
+        try {
+          const responseResult = await suggestResponse(
+            {
+              title: safeTicket?.title ?? ticket.title as string,
+              description: safeTicket?.description ?? ticket.description as string,
+              priority: triageResult.priority as number,
+              category: triageResult.category as string,
+              company_name: safeTicket?.company_name,
+            },
+            contextResult,
+            userName,
+          );
+          suggestedResponse = responseResult.text;
+          responseTokens = responseResult.tokens;
+        } catch (err) {
+          console.error('Error en ResponseAgent, omitiendo sugerencia:', err);
+        }
+      } else {
+        console.log('Ticket fuera de scope, omitiendo ResponseAgent');
       }
     } else {
-      console.log('Ticket fuera de scope, omitiendo ResponseAgent');
+      console.log('Modo minimal: omitiendo ContextAgent y ResponseAgent');
     }
 
     console.log('Actualizando ticket en Supabase...');
-    const tokenUsage = {
-      triage: triageTokens,
-      context: contextTokens,
-      response: responseTokens,
-      total: {
-        promptTokens: triageTokens.promptTokens + contextTokens.promptTokens + responseTokens.promptTokens,
-        candidatesTokens: triageTokens.candidatesTokens + contextTokens.candidatesTokens + responseTokens.candidatesTokens,
-        totalTokens: triageTokens.totalTokens + contextTokens.totalTokens + responseTokens.totalTokens,
-      },
-    };
+    const tokenUsage = contextTokens.totalTokens > 0 || responseTokens.totalTokens > 0
+      ? {
+          triage: triageTokens,
+          context: contextTokens,
+          response: responseTokens,
+          total: {
+            promptTokens: triageTokens.promptTokens + contextTokens.promptTokens + responseTokens.promptTokens,
+            candidatesTokens: triageTokens.candidatesTokens + contextTokens.candidatesTokens + responseTokens.candidatesTokens,
+            totalTokens: triageTokens.totalTokens + contextTokens.totalTokens + responseTokens.totalTokens,
+          },
+        }
+      : {
+          triage: triageTokens,
+          total: {
+            promptTokens: triageTokens.promptTokens,
+            candidatesTokens: triageTokens.candidatesTokens,
+            totalTokens: triageTokens.totalTokens,
+          },
+        };
 
     const updateData: Record<string, unknown> = {
       category: triageResult.category,
       priority: triageResult.priority,
       tags: triageResult.tags,
-      ai_context: contextResult,
       ai_token_usage: tokenUsage,
+      ai_mode: aiMode,
       status: triageResult.priority === 0 ? 'CLOSED' : 'OPEN',
       updated_at: new Date().toISOString(),
     };
+    if (contextResult) {
+      updateData.ai_context = contextResult;
+    }
     if (suggestedResponse) {
       updateData.ai_suggested_response = suggestedResponse;
     }
