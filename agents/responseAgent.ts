@@ -1,4 +1,4 @@
-import { generateMarkdown } from '../services/gemini';
+import { generateMarkdown, type TokenUsage } from '../services/gemini';
 
 const SYSTEM_INSTRUCTION = `Eres un Ingeniero de Soporte Técnico Especializado de Nivel 2 para una plataforma SaaS empresarial. Tu única función es responder tickets de soporte técnico relacionados con el uso de la plataforma.
 
@@ -41,7 +41,7 @@ export async function suggestResponse(
   },
   contextResult: Record<string, unknown>,
   userName: string | null,
-): Promise<string> {
+): Promise<{ text: string; tokens: TokenUsage }> {
   const userMessage = `Ticket actual:\nTítulo: ${currentTicket.title}\nDescripción: ${currentTicket.description}\nPrioridad: ${currentTicket.priority ?? 'No asignada'}\nCategoría: ${currentTicket.category ?? 'Sin categoría'}\nNombre de la empresa: ${currentTicket.company_name || 'No disponible'}\n\nContexto del cliente:\n${JSON.stringify(contextResult, null, 2)}\n\nNombre del usuario: ${userName || 'No disponible'}`;
 
   return generateMarkdown(SYSTEM_INSTRUCTION, userMessage);

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { generateStructuredJSON } from '../services/gemini';
+import { generateStructuredJSON, type TokenUsage } from '../services/gemini';
 
 const SYSTEM_INSTRUCTION = `Eres un Agente de Triaje experto en soporte técnico de nivel empresarial dentro de una plataforma SaaS. Tu única tarea es analizar el ticket entrante de un usuario y clasificarlo de forma fría, objetiva y estrictamente precisa.
 
@@ -35,8 +35,8 @@ const TriageResultSchema = z.object({
 
 export type TriageResult = z.infer<typeof TriageResultSchema>;
 
-export async function triageTicket(title: string, description: string): Promise<TriageResult> {
+export async function triageTicket(title: string, description: string): Promise<{ result: TriageResult; tokens: TokenUsage }> {
   const userMessage = `Analiza el siguiente ticket de soporte:\n\nTítulo: ${title}\n\nDescripción: ${description}`;
-  const raw = await generateStructuredJSON<Record<string, unknown>>(SYSTEM_INSTRUCTION, userMessage, GEMINI_SCHEMA);
-  return TriageResultSchema.parse(raw);
+  const { data: raw, tokens } = await generateStructuredJSON<Record<string, unknown>>(SYSTEM_INSTRUCTION, userMessage, GEMINI_SCHEMA);
+  return { result: TriageResultSchema.parse(raw), tokens };
 }

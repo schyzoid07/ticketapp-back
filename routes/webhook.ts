@@ -41,8 +41,11 @@ router.post('/process-ticket', async (req: Request, res: Response) => {
 
     console.log('Ejecutando TriageAgent...');
     let triageResult: Record<string, unknown>;
+    let triageTokens = { promptTokens: 0, candidatesTokens: 0, totalTokens: 0 };
     try {
-      triageResult = await triageTicket(ticket.title as string, ticket.description as string);
+      const triageResponse = await triageTicket(ticket.title as string, ticket.description as string);
+      triageResult = triageResponse.result as unknown as Record<string, unknown>;
+      triageTokens = triageResponse.tokens;
       console.log('Triage completado:', triageResult);
     } catch (err) {
       console.error('Error en TriageAgent, usando fallback:', err);
@@ -72,11 +75,14 @@ router.post('/process-ticket', async (req: Request, res: Response) => {
     const safeTicket = sanitizeTicket(ticket as Record<string, unknown>);
     const safeHistory = sanitizeTicketArray((historyTickets || []) as Record<string, unknown>[]);
     let contextResult: Record<string, unknown>;
+    let contextTokens = { promptTokens: 0, candidatesTokens: 0, totalTokens: 0 };
     try {
-      contextResult = await analyzeContext(
+      const contextResponse = await analyzeContext(
         { title: safeTicket?.title ?? '', description: safeTicket?.description ?? '' },
         safeHistory,
       );
+      contextResult = contextResponse.result as unknown as Record<string, unknown>;
+      contextTokens = contextResponse.tokens;
       console.log('Contexto analizado:', contextResult);
     } catch (err) {
       console.error('Error en ContextAgent, usando fallback:', err);
@@ -88,11 +94,12 @@ router.post('/process-ticket', async (req: Request, res: Response) => {
     }
 
     let suggestedResponse = null;
+    let responseTokens = { promptTokens: 0, candidatesTokens: 0, totalTokens: 0 };
     if (triageResult && (triageResult.priority as number) > 0) {
       const userName = (ticket.user_name as string) || null;
       console.log('Ejecutando ResponseAgent...');
       try {
-        suggestedResponse = await suggestResponse(
+        const responseResult = await suggestResponse(
           {
             title: safeTicket?.title ?? ticket.title as string,
             description: safeTicket?.description ?? ticket.description as string,
@@ -103,6 +110,8 @@ router.post('/process-ticket', async (req: Request, res: Response) => {
           contextResult,
           userName,
         );
+        suggestedResponse = responseResult.text;
+        responseTokens = responseResult.tokens;
       } catch (err) {
         console.error('Error en ResponseAgent, omitiendo sugerencia:', err);
       }
@@ -111,11 +120,23 @@ router.post('/process-ticket', async (req: Request, res: Response) => {
     }
 
     console.log('Actualizando ticket en Supabase...');
+    const tokenUsage = {
+      triage: triageTokens,
+      context: contextTokens,
+      response: responseTokens,
+      total: {
+        promptTokens: triageTokens.promptTokens + contextTokens.promptTokens + responseTokens.promptTokens,
+        candidatesTokens: triageTokens.candidatesTokens + contextTokens.candidatesTokens + responseTokens.candidatesTokens,
+        totalTokens: triageTokens.totalTokens + contextTokens.totalTokens + responseTokens.totalTokens,
+      },
+    };
+
     const updateData: Record<string, unknown> = {
       category: triageResult.category,
       priority: triageResult.priority,
       tags: triageResult.tags,
       ai_context: contextResult,
+      ai_token_usage: tokenUsage,
       status: triageResult.priority === 0 ? 'CLOSED' : 'OPEN',
       updated_at: new Date().toISOString(),
     };
@@ -171,29 +192,41 @@ router.post('/test-process', async (req: Request, res: Response) => {
       (ticket as Record<string, unknown>).company_name = company?.name || null;
     }
 
-    const triageResult = await triageTicket(ticket.title, ticket.description);
+    const triageResponse = await triageTicket(ticket.title, ticket.description);
     const safeTicket = sanitizeTicket(ticket as unknown as Record<string, unknown>);
     const safeHistory = sanitizeTicketArray((ticket.history || []) as Record<string, unknown>[]);
-    const contextResult = await analyzeContext(
+    const contextResponse = await analyzeContext(
       { title: safeTicket?.title ?? '', description: safeTicket?.description ?? '' },
       safeHistory,
     );
-    const suggestedResponse = await suggestResponse(
+    const responseResult = await suggestResponse(
       {
         title: safeTicket?.title ?? ticket.title,
         description: safeTicket?.description ?? ticket.description,
-        priority: triageResult.priority,
-        category: triageResult.category,
+        priority: triageResponse.result.priority,
+        category: triageResponse.result.category,
         company_name: safeTicket?.company_name,
       },
-      contextResult as unknown as Record<string, unknown>,
+      contextResponse.result as unknown as Record<string, unknown>,
       ticket.user_name || null,
     );
 
+    const tokenUsage = {
+      triage: triageResponse.tokens,
+      context: contextResponse.tokens,
+      response: responseResult.tokens,
+      total: {
+        promptTokens: triageResponse.tokens.promptTokens + contextResponse.tokens.promptTokens + responseResult.tokens.promptTokens,
+        candidatesTokens: triageResponse.tokens.candidatesTokens + contextResponse.tokens.candidatesTokens + responseResult.tokens.candidatesTokens,
+        totalTokens: triageResponse.tokens.totalTokens + contextResponse.tokens.totalTokens + responseResult.tokens.totalTokens,
+      },
+    };
+
     res.json({
-      triage: triageResult,
-      context: contextResult,
-      response: suggestedResponse,
+      triage: triageResponse.result,
+      context: contextResponse.result,
+      response: responseResult.text,
+      token_usage: tokenUsage,
     });
   } catch (error) {
     console.error('Error en test pipeline:', error);
