@@ -6,6 +6,8 @@ import { analyzeContext } from '../agents/contextAgent';
 import { suggestResponse } from '../agents/responseAgent';
 import { sanitizeTicket, sanitizeTicketArray } from '../services/sanitize';
 import { requireAuth, requireRole, type AuthenticatedRequest } from '../middleware/auth';
+import { getCompanyPlan, getCompanyMonthlyTokenUsage } from '../services/plan-limiter';
+import { checkCompanyRateLimit, getPlanRateLimit } from '../services/rate-limiter';
 
 const router = Router();
 
@@ -43,6 +45,21 @@ router.post('/', requireAuth, requireRole('owner', 'admin'), async (req: Authent
     // Verify the ticket belongs to the user's company
     if (ticket.company_id !== req.user!.company_id) {
       res.status(403).json({ error: 'No tienes permiso para reprocesar este ticket' });
+      return;
+    }
+
+    // Check plan-based rate limit and token limit
+    const companyPlan = await getCompanyPlan(ticket.company_id);
+    const rateLimit = getPlanRateLimit(companyPlan);
+    const rateCheck = checkCompanyRateLimit(ticket.company_id, rateLimit);
+    if (!rateCheck.allowed) {
+      res.status(429).json({ error: `Límite de procesamiento excedido. Intenta de nuevo en ${rateCheck.resetInSeconds} segundos.` });
+      return;
+    }
+
+    const tokenUsageCheck = await getCompanyMonthlyTokenUsage(ticket.company_id, companyPlan);
+    if (tokenUsageCheck.used >= tokenUsageCheck.limit) {
+      res.status(429).json({ error: `Límite mensual de tokens alcanzado (${tokenUsageCheck.used.toLocaleString()}/${tokenUsageCheck.limit.toLocaleString()}). Actualiza tu plan para continuar.` });
       return;
     }
 

@@ -11,3 +11,10 @@ const envSchema = z.object({
 });
 
 export const env = envSchema.parse(process.env);
+
+export const PLAN_CONFIG = {
+  basic: { monthlyTokenLimit: 10_000 },
+  complete: { monthlyTokenLimit: 100_000 },
+};
+
+export type PlanType = keyof typeof PLAN_CONFIG;

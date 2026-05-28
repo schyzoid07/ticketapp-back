@@ -6,6 +6,8 @@ import { analyzeContext } from '../agents/contextAgent';
 import { suggestResponse } from '../agents/responseAgent';
 import { sanitizeTicket, sanitizeTicketArray } from '../services/sanitize';
 import { env } from '../services/env';
+import { getCompanyPlan, getCompanyMonthlyTokenUsage } from '../services/plan-limiter';
+import { checkCompanyRateLimit, getPlanRateLimit } from '../services/rate-limiter';
 
 const router = Router();
 
@@ -35,10 +37,47 @@ router.post('/process-ticket', async (req: Request, res: Response) => {
 
     const { data: company } = await supabase
       .from('companies')
-      .select('name')
+      .select('name, plan')
       .eq('id', ticket.company_id as string)
       .single();
     ticket.company_name = company?.name || null;
+
+    // Check plan-based rate limit and token limit
+    const companyPlan = (company?.plan as 'basic' | 'complete') || 'basic';
+    const rateLimit = getPlanRateLimit(companyPlan);
+    const rateCheck = checkCompanyRateLimit(ticket.company_id as string, rateLimit);
+    if (!rateCheck.allowed) {
+      console.log(`Company ${ticket.company_id} excedió rate limit (${rateLimit}/min). Marcando ticket sin IA.`);
+      await supabase
+        .from('tickets')
+        .update({
+          status: 'OPEN',
+          category: 'GENERAL_INQUIRY' as string,
+          priority: (ticket.priority as number) ?? 2,
+          tags: ['rate-limit-exceeded'],
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', ticket.id as string);
+      res.json({ success: true, ticketId: ticket.id, note: 'rate-limit-exceeded' });
+      return;
+    }
+
+    const tokenUsageCheck = await getCompanyMonthlyTokenUsage(ticket.company_id as string, companyPlan);
+    if (tokenUsageCheck.used >= tokenUsageCheck.limit) {
+      console.log(`Company ${ticket.company_id} excedió límite de tokens (${tokenUsageCheck.used}/${tokenUsageCheck.limit}). Marcando ticket sin IA.`);
+      await supabase
+        .from('tickets')
+        .update({
+          status: 'OPEN',
+          category: 'GENERAL_INQUIRY' as string,
+          priority: (ticket.priority as number) ?? 2,
+          tags: ['token-limit-exceeded'],
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', ticket.id as string);
+      res.json({ success: true, ticketId: ticket.id, note: 'token-limit-exceeded' });
+      return;
+    }
 
     console.log('Ejecutando TriageAgent...');
     let triageResult: Record<string, unknown>;
