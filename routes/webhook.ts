@@ -156,7 +156,8 @@ router.post('/process-ticket', async (req: Request, res: Response) => {
           suggestedResponse = responseResult.text;
           responseTokens = responseResult.tokens;
         } catch (err) {
-          console.error('Error en ResponseAgent, omitiendo sugerencia:', err);
+          console.error('Error en ResponseAgent, usando fallback:', err);
+          suggestedResponse = 'No se pudo generar una sugerencia automática de respuesta. Redacte la respuesta manualmente.';
         }
       } else {
         console.log('Ticket fuera de scope, omitiendo ResponseAgent');

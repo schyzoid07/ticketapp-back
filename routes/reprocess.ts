@@ -141,7 +141,8 @@ router.post('/', requireAuth, requireRole('owner', 'admin'), async (req: Authent
         suggestedResponse = responseResult.text;
         responseTokens = responseResult.tokens;
       } catch (err) {
-        console.error('Error en ResponseAgent:', err);
+        console.error('Error en ResponseAgent, usando fallback:', err);
+        suggestedResponse = 'No se pudo generar una sugerencia automática de respuesta. Redacte la respuesta manualmente.';
       }
     }
 
