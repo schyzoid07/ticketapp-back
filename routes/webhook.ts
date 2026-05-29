@@ -8,6 +8,7 @@ import { sanitizeTicket, sanitizeTicketArray } from '../services/sanitize';
 import { env } from '../services/env';
 import { getCompanyPlan, getCompanyMonthlyTokenUsage } from '../services/plan-limiter';
 import { checkCompanyRateLimit, getPlanRateLimit } from '../services/rate-limiter';
+import { sendPriorityAlert } from '../services/alerts';
 
 const router = Router();
 
@@ -215,6 +216,11 @@ router.post('/process-ticket', async (req: Request, res: Response) => {
     }
 
     console.log(`Ticket ${ticket.id} procesado exitosamente`);
+
+    // Fire priority 4 alerts (email / telegram)
+    sendPriorityAlert(ticket as Record<string, unknown>).catch((err) =>
+      console.error('Error en alerta prioritaria:', err),
+    );
 
     // Fire internal n8n webhook (todos los tickets procesados)
     if (env.INTERNAL_WEBHOOK_URL) {
